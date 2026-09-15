@@ -6,25 +6,26 @@ This repository builds a daily panel of 47 NIFTY 50 constituents from January 20
 ## Data sources
 
 **IIM-A Fama-French and Momentum Factors, Indian market**
+
 Release 2025-12, survivorship-bias-adjusted daily file.
-URL: https://faculty.iima.ac.in/iffm/Indian-Fama-French-Momentum/DATA/2025-12_FourFactors_and_Market_Returns_Daily_SurvivorshipBiasAdjusted.csv
-Accessed: 14-Sep-2026
-Cite as: Agarwalla, S. K., Jacob, J. and Varma, J. R. (2013), "Four factor
-model in Indian equities market", W.P. No. 2013-09-05, IIM Ahmedabad.
+
+- URL: https://faculty.iima.ac.in/iffm/Indian-Fama-French-Momentum/DATA/2025-12_FourFactors_and_Market_Returns_Daily_SurvivorshipBiasAdjusted.csv
+- Accessed: 14 September 2026
+- Cite as: Agarwalla, S. K., Jacob, J. and Varma, J. R. (2013), "Four factor model in Indian equities market", W.P. No. 2013-09-05, IIM Ahmedabad.
 
 **NIFTY 50 constituent list**
-https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv
-Downloaded 14 September 2026. Committed as a dated snapshot rather than
-fetched at runtime: NSE publishes the current constituent list, so a live
-fetch would silently change the universe after any index rebalance.
+
+- URL: https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv
+- Downloaded: 14 September 2026
+
+Committed as a dated snapshot rather than fetched at runtime: NSE publishes the current constituent list, so a live fetch would silently change the universe after any index rebalance.
 
 **Daily prices**
-Yahoo Finance, retrieved with `tq_get()` from the tidyquant package.
-Tickers are the NIFTY 50 constituent symbols with a `.NS` suffix, plus
-`^NSEI` (the NIFTY 50 index) as the benchmark series. Adjusted closing
-prices are used, so returns include dividends and are corrected for
-splits. Fetched 14 September 2026 for the window 20 December 2019 to
-31 December 2025.
+
+- Source: Yahoo Finance, retrieved with `tq_get()` from tidyquant
+- Fetched: 14 September 2026, for the window 20 December 2019 to 31 December 2025
+
+Tickers are the NIFTY 50 constituent symbols with a `.NS` suffix, plus `^NSEI` (the NIFTY 50 index) as the benchmark series. Adjusted closing prices are used, so returns include dividends and are corrected for splits.
 
 ## Reproducing the panel
 
