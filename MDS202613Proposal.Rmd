@@ -1,0 +1,190 @@
+---
+title: "Fama French and Momentum Factors: Indian Market"
+subtitle: "Project Proposal"
+author: "Dhruv Devpura (MDS202613)"
+date: "September 2026"
+output:
+  pdf_document:
+    number_sections: true
+fontsize: 11pt
+geometry: margin=1in
+---
+
+```{r setup, include = FALSE}
+# Global options: hide code, messages and warnings in the PDF
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      fig.align = "center", fig.width = 6.5, fig.height = 3.8)
+
+library(ggplot2)
+library(dplyr)
+
+# The .Rmd sits in the project root, so this path matches 3_charts.R
+panel = readRDS("data/panel.rds")
+```
+
+# Abstract {-}
+
+A portfolio or risk team starts each day with the same question: what are our holdings really exposed to? Two stocks from different industries can rise and fall together because they share an exposure to size, value or momentum, and a portfolio built from them carries more risk than it appears. This project builds a daily panel of 46 NIFTY 50 stocks from 2020 to 2025, joined with the IIM Ahmedabad Fama-French and momentum factors, and uses it to explore how the factors and the stocks behaved. Even in 2020, the market explained less than half of the average stock's daily movement. The next stage is an interactive R Shiny dashboard that shows the factor exposure of any stock or portfolio, the kind of analysis usually found in expensive institutional risk systems.
+
+# Problem Statement
+
+A stock's daily return is not driven by one thing. Part of it comes from the market as a whole, part from the type of stock it is (small or large, cheap or expensive, recent winner or loser), and part from news about the company itself. For example, on a day Tata Steel falls 3%, part of that may be the whole market falling, part may be value stocks as a group falling more than the rest, and part may be steel-specific news.
+
+Looking only at returns, these parts can't be told apart, and that matters for anyone holding more than one stock. Infosys writes software and Hindustan Unilever sells soap, so holding both looks diversified. But both behave like growth stocks and tend to do badly on the same days, whenever growth stocks lag, so the portfolio is less diversified than it looks.
+
+This project uses the IIM Ahmedabad factors for 46 NIFTY 50 stocks from 2020 to 2025 to show how the factors behaved and how much of each stock's movement came from the market, as a first step towards an interactive dashboard.
+
+# Data Description
+
+This project combines two data sources for January 2020 to December 2025: daily factor returns from IIM Ahmedabad and daily stock prices from Yahoo Finance, about 83,000 rows of raw data in total. The factor and price data are downloaded in R, and all code and data are on GitHub: <https://github.com/DhruvDevpura/india-factor-risk-dashboard>.
+
+**The four factors:** IIM Ahmedabad builds these from BSE and NSE stocks, leaving out micro-cap and penny stocks (Agarwalla, Jacob and Varma, 2013).
+
+- **MF (market):** the return of the whole Indian stock market minus the risk-free rate. It is positive when stocks do better than Treasury Bills.
+- **SMB (size, small minus big):** the return of small companies minus the return of large companies. It is positive when small companies do better.
+- **HML (value, high minus low):** the return of value stocks, which are cheap compared to their book value, minus the return of growth stocks, which are expensive compared to it. It is positive when value stocks do better.
+- **WML (momentum, winners minus losers):** the return of stocks that have recently risen the most minus the return of stocks that have recently fallen the most. It is positive when recent winners keep doing better.
+
+**Files used:**
+
+- `ff_india_daily_2025_12.csv`: downloaded in R directly from the IIM Ahmedabad data library. 8,004 rows and 6 columns, daily from October 1993 to December 2025, with the date, the four factors and the daily risk-free rate (RF).
+- `ind_nifty50list.csv`: the NIFTY 50 constituent list from NSE, as of 14 September 2026, downloaded manually as NSE blocks automated requests. 50 rows and 5 columns, with each company's name, industry and symbol.
+- `nse_prices_raw.csv`: daily prices from Yahoo Finance, downloaded in R using the `tq_get()` function from the `tidyquant` package. 74,672 rows and 8 columns, with daily prices for the 50 stocks and the NIFTY 50 index.
+
+**Preprocessing steps:**
+
+- Converted the IIM Ahmedabad returns from percent to decimals. As a check, RF averages about 5.2% a year over 2020 to 2025, in line with 91-day Treasury Bill yields.
+- Dropped four stocks: Eternal, Jio Financial Services and Max Healthcare listed after January 2020, and Tata Motors had a demerger in October 2025 that breaks its price history.
+- Computed daily returns for each stock and for the NIFTY 50 index from adjusted closing prices, and subtracted RF from the stock returns to get excess returns.
+- Joined everything by date. Seven trading days, mostly special sessions such as Saturday and Diwali Muhurat trading, had data missing in one source and were dropped, leaving 1,485 days with no missing values.
+
+**Final panel:** 68,310 rows and 10 columns, one row per stock per trading day: the date, the stock's ticker, its daily return (`ret`), the risk-free rate (`rf`), its excess return (`exret`), the four factor returns (`mf`, `smb`, `hml`, `wml`) and the NIFTY 50 index return (`nifty_ret`). Every chart in this proposal is built from this file.
+
+# Exploratory Data Analysis
+
+## Growth of the four factors
+
+```{r chart1, fig.height = 3.4}
+#Factor columns are the same for every ticker on a date, so one stock (TCS) gives the full series
+fac = panel %>%
+  filter(ticker == "TCS.NS") %>%
+  select(date, mf, smb, hml, wml)
+
+fac$wml_cum = cumprod(1 + fac$wml)
+fac$hml_cum = cumprod(1 + fac$hml)
+fac$smb_cum = cumprod(1 + fac$smb)
+fac$mf_cum  = cumprod(1 + fac$mf)
+
+last = fac[nrow(fac), ]
+
+ggplot(fac, aes(x = date)) +
+  geom_hline(yintercept = 1, colour = "grey75", linewidth = 0.3) +
+  geom_line(aes(y = mf_cum),  colour = "black",  linewidth = 0.35) +
+  geom_line(aes(y = smb_cum), colour = "red",    linewidth = 0.35) +
+  geom_line(aes(y = hml_cum), colour = "blue",   linewidth = 0.35) +
+  geom_line(aes(y = wml_cum), colour = "orange", linewidth = 0.35) +
+  annotate("text", x = max(fac$date), y = last$mf_cum,  label = sprintf("  MF %.2f",  last$mf_cum),  hjust = 0, size = 3, colour = "black") +
+  annotate("text", x = max(fac$date), y = last$smb_cum, label = sprintf("  SMB %.2f", last$smb_cum), hjust = 0, size = 3, colour = "red") +
+  annotate("text", x = max(fac$date), y = last$hml_cum, label = sprintf("  HML %.2f", last$hml_cum), hjust = 0, size = 3, colour = "blue") +
+  annotate("text", x = max(fac$date), y = last$wml_cum, label = sprintf("  WML %.2f", last$wml_cum), hjust = 0, size = 3, colour = "orange") +
+  scale_y_continuous(breaks = seq(0.5, 3, 0.5)) +
+  coord_cartesian(clip = "off") +
+  labs(title = "Growth of 1 in each IIM-A factor, 2020 to 2025",
+       x = NULL, y = "Growth of 1") +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(colour = "grey93", linewidth = 0.3),
+    plot.title         = element_text(face = "bold", size = 12),
+    plot.margin        = margin(5, 28, 5, 5)
+  )
+```
+
+Value (HML) did best over the period, growing about 19% a year, and it was the only factor with a positive return in every calendar year. Size (SMB) ended almost where it started. These are not returns an investor could actually earn, since they ignore trading and shorting costs, and MF is the market's return over Treasury Bills rather than the market's own return.
+
+## Market sensitivity of two stocks
+
+```{r chart2, fig.height = 3.2}
+#Two stocks from opposite ends of the beta range across the 46 constituents
+beta_pair = panel[panel$ticker %in% c("HINDUNILVR.NS", "TATASTEEL.NS"), ]
+
+ggplot(transform(beta_pair,
+                 ticker = ifelse(ticker == "HINDUNILVR.NS",
+                                 "HINDUNILVR.NS  (beta 0.59)",
+                                 "TATASTEEL.NS  (beta 1.39)")),
+       aes(x = mf, y = exret)) +
+  geom_point(alpha = 0.2, size = 0.7) +
+  geom_smooth(method = "lm", formula = y ~ x, se = FALSE, colour = "red", linewidth = 0.6) +
+  facet_wrap(~ ticker) +
+  labs(title = "Daily excess returns of HUL and Tata Steel against the market",
+       x = "Market excess return", y = "Stock excess return") +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(face = "bold", size = 12))
+```
+
+The slope of each line is the stock's beta. When the market moves 1%, Hindustan Unilever moves about 0.59% on average and Tata Steel about 1.39%, so Tata Steel falls much harder when the market falls. Tata Steel also follows the market more closely: the market explains about 42% of its daily movement, against 18% for Hindustan Unilever. The two were picked from opposite ends of the 46 stocks.
+
+## Share of movement explained by the market
+
+```{r chart3, fig.height = 3.5}
+yr_panel = panel %>%
+  mutate(year = format(date, "%Y"))
+
+years   = sort(unique(yr_panel$year))
+tickers = unique(yr_panel$ticker)
+
+market = rep(NA, length(years))
+
+for (i in 1:length(years))
+{
+  c2 = rep(NA, length(tickers))
+  for (j in 1:length(tickers))
+  {
+    d = yr_panel[yr_panel$year == years[i] & yr_panel$ticker == tickers[j], ]
+    #Squared correlation with the market = share of this stock's daily movement that tracks the market
+    c2[j] = cor(d$exret, d$mf)^2
+  }
+  #Average across the 46 stocks, equal weight
+  market[i] = mean(c2)
+}
+yr_share = data.frame(year = years, market = market, other = 1 - market)
+
+ggplot(yr_share, aes(x = year, y = market)) +
+  geom_col(fill = "skyblue", width = 0.6) +
+  geom_text(aes(label = paste0(round(100 * market), "%")),
+            vjust = -0.5, size = 3.5) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  labs(title = "Share of daily stock movement explained by the market, by year",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid   = element_blank(),
+        axis.text.y  = element_blank(),
+        plot.title   = element_text(face = "bold", size = 12))
+```
+
+For each stock and each year, the share is the squared correlation of its daily return with the market, averaged across the 46 stocks. Stocks moved together most in 2020, when the COVID crash hit every company at once, and least in 2023. Even in 2020, the market explained less than half of the average stock's movement, with the rest coming from the other three factors, industry effects and company news.
+
+# Approaches
+
+The next stage turns the panel and charts into an interactive dashboard in R Shiny. Commercial risk models already break portfolios into factor exposures, but they are built and priced for large institutions. This dashboard offers a free and transparent version for Indian stocks, built on IIM Ahmedabad's public data, for smaller investors and advisers. The main pieces are:
+
+- **Sensitivity of each stock to all four factors.** Section 3.2 measures how much a stock moves with the market. The same idea extends to size, value and momentum together, estimated by regressing each stock's excess return on the four factors (Sen and Das, 2023, Chapter 18). This shows what each stock is really a bet on, for example that Infosys and Hindustan Unilever both behave like growth stocks.
+- **Splitting each stock's movement into its sources.** Section 3.3 separates the market from everything else. The next step measures how much the other three factors add, leaving the part that comes from industry and company news. This shows how much of a stock's risk can be reduced by holding more stocks, and how much cannot.
+- **How risky each factor was, year by year.** A factor's risk is not fixed: the market's daily swings were much larger in 2020 than in 2023. Holding the same exposure to a factor therefore means taking on more risk in some years than others, so an investor who wants steady risk should hold less of a factor when it becomes more volatile.
+- **Whether sensitivities change over time.** Each stock's sensitivities are re-estimated one year at a time. This matters to a portfolio manager because decisions are made on past estimates: a stock bought as defensive, with a low beta, may have become more sensitive to the market, and the portfolio would then fall more than planned in a downturn.
+- **A portfolio view.** A user picks stocks and weights, and the dashboard shows the portfolio's exposure to each factor as the weighted average of its stocks' sensitivities. This makes hidden concentration visible, such as two holdings that look different but bet on the same factor.
+
+# Conclusion
+
+Taken together, the three charts point the same way: the market alone does not explain these stocks well. The other factors followed very different paths from the market, stocks carried very different amounts of market risk, and even in 2020 most of the average stock's daily movement came from something other than the market. A view based only on the market would miss much of what drives Indian stocks, which is why the next stage measures all four factors together.
+
+# References {-}
+
+1. Agarwalla, S. K., Jacob, J. and Varma, J. R. (2013). Four factor model in Indian equities market. Working Paper No. 2013-09-05, Indian Institute of Management, Ahmedabad. Data library: <https://faculty.iima.ac.in/iffm/Indian-Fama-French-Momentum/>
+
+2. Sen, R. and Das, S. (2023). *Computational Finance with R*. Indian Statistical Institute Series. Springer, Singapore. <https://doi.org/10.1007/978-981-19-2008-0>
+
+3. National Stock Exchange of India. NIFTY 50 constituent list, accessed 14 September 2026.
+
+4. Yahoo Finance. Daily historical stock prices, accessed through the `tidyquant` R package, September 2026.
