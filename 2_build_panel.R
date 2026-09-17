@@ -11,7 +11,11 @@ prices$date = as.Date(prices$date)
 full_n = max(table(prices$symbol))
 keep = names(table(prices$symbol))[table(prices$symbol) == full_n]
 #dropped = setdiff(unique(prices$symbol),keep)
+
+#TMPV.NS: Tata Motors demerged its CV business on 14 Oct 2025 (39.5% of value)
+#Yahoo did not adjust, and the pre-demerger history is a different company
 prices = prices[prices$symbol %in% keep,]
+prices = prices[prices$symbol != "TMPV.NS",]
 
 iima_url = "https://faculty.iima.ac.in/iffm/Indian-Fama-French-Momentum/DATA/2025-12_FourFactors_and_Market_Returns_Daily_SurvivorshipBiasAdjusted.csv"
 download.file(iima_url,"data_raw/ff_india_daily_2025_12.csv")
