@@ -65,7 +65,8 @@ ggplot(transform(beta_pair,
   facet_wrap(~ ticker) +
   labs(title = "Daily excess returns of HUL and Tata Steel against the market",
        x = "Market excess return", y = "Stock excess return") +
-  theme_minimal()
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(face = "bold", size = 12))
   
 
 #Chart 3: Share of daily stock movement explained by the market, by year
@@ -100,9 +101,9 @@ ggplot(yr_share, aes(x = year, y = market)) +
             vjust = -0.5, size = 3.5) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
   labs(title = "Share of daily stock movement explained by the market, by year",
-       x = NULL, y = "Share of daily movement explained by the market") +
+       x = NULL, y = NULL) +
   theme_minimal(base_size = 11) +
-  theme(panel.grid   = element_blank(),
-        axis.text.y  = element_blank(),
-        axis.title.y = element_text(size = 9),
-        plot.title   = element_text(face = "bold", size = 12))
+  theme(panel.grid  = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title  = element_text(face = "bold", size = 12))
+
