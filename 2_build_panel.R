@@ -71,3 +71,4 @@ panel = panel %>%
   rename(ticker = symbol,rf=RF,mf=MF,smb=SMB,hml=HML,wml=WML) %>%
   select(date,ticker,ret,rf,exret,mf,smb,hml,wml,nifty_ret)
 saveRDS(panel,"data/panel.rds")
+
