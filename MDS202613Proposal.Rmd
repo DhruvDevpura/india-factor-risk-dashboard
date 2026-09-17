@@ -127,7 +127,7 @@ The slope of each line is the stock's beta. When the market moves 1%, Hindustan 
 
 ## Share of movement explained by the market
 
-```{r chart3, fig.height = 3.5}
+```{r chart3, fig.height = 5.8}
 yr_panel = panel %>%
   mutate(year = format(date, "%Y"))
 
@@ -165,19 +165,53 @@ ggplot(yr_share, aes(x = year, y = market)) +
 
 For each stock and each year, the share is the squared correlation of its daily return with the market, averaged across the 46 stocks. Stocks moved together most in 2020, when the COVID crash hit every company at once, and least in 2023. Even in 2020, the market explained less than half of the average stock's movement, with the rest coming from the other three factors, industry effects and company news.
 
+## Volatility of the four factors
+
+```{r chart4, fig.height = 4.2}
+years = sort(unique(format(fac$date,"%Y")))
+factors = c("mf","smb","hml","wml")
+
+vol_dat = data.frame()
+for(i in 1:length(years))
+{
+  for(j in 1:length(factors))
+  {
+    #This factor's daily returns in this year
+    x = fac[[factors[j]]][format(fac$date, "%Y") == years[i]]
+    #Annualised volatility: sd of daily returns times the square root of 252 trading days
+    vol_dat = rbind(vol_dat, data.frame(year = years[i], factor = toupper(factors[j]), vol = sd(x) * sqrt(252)))
+  }
+}
+#Order rows top to bottom as MF, SMB, HML, WML
+vol_dat$factor = factor(vol_dat$factor,levels = c("WML","HML","SMB","MF"))
+
+ggplot(vol_dat, aes(x = year, y = factor, fill = vol)) +
+  geom_tile(colour = "white", linewidth = 1) +
+    geom_text(aes(label = sprintf("%.1f%%", 100 * vol), colour = vol > 0.20),,
+            size = 3.5, show.legend = FALSE) +
+   scale_fill_gradient(low = "lightyellow", high = "firebrick", guide = "none") +
+  scale_colour_manual(values = c(`FALSE` = "black", `TRUE` = "white")) +
+  labs(title = "Annualised volatility of each IIM-A factor, by year", x = NULL, y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(face = "bold", size = 12))
+```
+
+Volatility here is the standard deviation of a factor's daily returns, scaled to a year by multiplying by the square root of 252 trading days. The market was the most volatile factor in five of the six years, and 2020 stands out for three of the four factors: the market's typical daily move was about 1.6% that year, against about 0.65% in 2023. A factor's risk is therefore not fixed, and the same exposure to a factor can carry very different risk from one year to the next.
+
 # Approaches
 
 The next stage turns the panel and charts into an interactive dashboard in R Shiny. Commercial risk models already break portfolios into factor exposures, but they are built and priced for large institutions. This dashboard offers a free and transparent version for Indian stocks, built on IIM Ahmedabad's public data, for smaller investors and advisers. The main pieces are:
 
 - **Sensitivity of each stock to all four factors.** Section 3.2 measures how much a stock moves with the market. The same idea extends to size, value and momentum together, estimated by regressing each stock's excess return on the four factors (Sen and Das, 2023, Chapter 18). This shows what each stock is really a bet on, for example that Infosys and Hindustan Unilever both behave like growth stocks.
 - **Splitting each stock's movement into its sources.** Section 3.3 separates the market from everything else. The next step measures how much the other three factors add, leaving the part that comes from industry and company news. This shows how much of a stock's risk can be reduced by holding more stocks, and how much cannot.
-- **How risky each factor was, year by year.** A factor's risk is not fixed: the market's daily swings were much larger in 2020 than in 2023. Holding the same exposure to a factor therefore means taking on more risk in some years than others, so an investor who wants steady risk should hold less of a factor when it becomes more volatile.
+- **Tracking factor risk over time.** Section 3.4 shows that a factor's volatility changes a lot from year to year. The dashboard will recompute it over a moving one-year window, so an investor who wants steady risk can see when a factor has become more volatile and hold less of it.
 - **Whether sensitivities change over time.** Each stock's sensitivities are re-estimated one year at a time. This matters to a portfolio manager because decisions are made on past estimates: a stock bought as defensive, with a low beta, may have become more sensitive to the market, and the portfolio would then fall more than planned in a downturn.
 - **A portfolio view.** A user picks stocks and weights, and the dashboard shows the portfolio's exposure to each factor as the weighted average of its stocks' sensitivities. This makes hidden concentration visible, such as two holdings that look different but bet on the same factor.
 
 # Conclusion
 
-Taken together, the three charts point the same way: the market alone does not explain these stocks well. The other factors followed very different paths from the market, stocks carried very different amounts of market risk, and even in 2020 most of the average stock's daily movement came from something other than the market. A view based only on the market would miss much of what drives Indian stocks, which is why the next stage measures all four factors together.
+Taken together, the four charts point the same way: the market alone does not explain these stocks well. The other factors followed very different paths from the market with risk that changed sharply from year to year, stocks carried very different amounts of market risk, and even in 2020 most of the average stock's daily movement came from something other than the market. A view based only on the market would miss much of what drives Indian stocks, which is why the next stage measures all four factors together.
 
 # References {-}
 

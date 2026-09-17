@@ -107,3 +107,31 @@ ggplot(yr_share, aes(x = year, y = market)) +
         axis.text.y = element_blank(),
         plot.title  = element_text(face = "bold", size = 12))
 
+#----
+years = sort(unique(format(fac$date,"%Y")))
+factors = c("mf","smb","hml","wml")
+
+vol_dat = data.frame()
+for(i in 1:length(years))
+{
+  for(j in 1:length(factors))
+  {
+    #This factor's daily returns in this year
+    x = fac[[factors[j]]][format(fac$date, "%Y") == years[i]]
+    #Annualised volatility: sd of daily returns times the square root of 252 trading days
+    vol_dat = rbind(vol_dat, data.frame(year = years[i], factor = toupper(factors[j]), vol = sd(x) * sqrt(252)))
+  }
+}
+#Order rows top to bottom as MF, SMB, HML, WML
+vol_dat$factor = factor(vol_dat$factor,levels = c("WML","HML","SMB","MF"))
+
+ggplot(vol_dat, aes(x = year, y = factor, fill = vol)) +
+  geom_tile(colour = "white", linewidth = 1) +
+  geom_text(aes(label = sprintf("%.1f%%", 100 * vol), colour = vol > 0.20),,
+            size = 3.5, show.legend = FALSE) +
+  scale_fill_gradient(low = "lightyellow", high = "firebrick", guide = "none") +
+  scale_colour_manual(values = c(`FALSE` = "black", `TRUE` = "white")) +
+  labs(title = "Annualised volatility of each IIM-A factor, by year", x = NULL, y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(face = "bold", size = 12))
