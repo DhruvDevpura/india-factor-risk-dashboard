@@ -26,7 +26,7 @@ panel = readRDS("data/panel.rds")
 
 A portfolio or risk team starts each day with the same question: what are our holdings really exposed to? Two stocks from different industries can rise and fall together because they share an exposure to size, value or momentum, and a portfolio built from them carries more risk than it appears. This project builds a daily panel of 46 NIFTY 50 stocks from 2020 to 2025, joined with the IIM Ahmedabad Fama-French and momentum factors, and uses it to explore how the factors and the stocks behaved. Even in 2020, the market explained less than half of the average stock's daily movement. The next stage is an interactive R Shiny dashboard that shows the factor exposure of any stock or portfolio, the kind of analysis usually found in expensive institutional risk systems.
 
-# Problem Statement
+# Introduction and Problem Statement
 
 A stock's daily return is not driven by one thing. Part of it comes from the market as a whole, part from the type of stock it is (small or large, cheap or expensive, recent winner or loser), and part from news about the company itself. For example, on a day Tata Steel falls 3%, part of that may be the whole market falling, part may be value stocks as a group falling more than the rest, and part may be steel-specific news.
 
@@ -203,7 +203,7 @@ Volatility here is the standard deviation of a factor's daily returns, scaled to
 
 The next stage turns the panel and charts into an interactive dashboard in R Shiny. Commercial risk models already break portfolios into factor exposures, but they are built and priced for large institutions. This dashboard offers a free and transparent version for Indian stocks, built on IIM Ahmedabad's public data, for smaller investors and advisers. The main pieces are:
 
-- **Sensitivity of each stock to all four factors.** Section 3.2 measures how much a stock moves with the market. The same idea extends to size, value and momentum together, estimated by regressing each stock's excess return on the four factors (Sen and Das, 2023, Chapter 18). This shows what each stock is really a bet on. A first four-factor fit on the panel already shows it: Infosys and Hindustan Unilever have value loadings of $-0.58$ and $-0.54$, so both behave like growth stocks  
+- **Sensitivity of each stock to all four factors.** Section 3.2 measures how much a stock moves with the market. The same idea extends to size, value and momentum together, estimated by regressing each stock's excess return on the four factors (Sen and Das, 2023, Chapter 18). This shows what each stock is really a bet on. A first four-factor fit on the panel already shows it: Infosys and Hindustan Unilever have value loadings of $-0.58$ and $-0.54$, so both behave like growth stocks. 
 - **Splitting each stock's movement into its sources.** Section 3.3 separates the market from everything else. The next step measures how much the other three factors add, leaving the part that comes from industry and company news. This shows how much of a stock's risk can be reduced by holding more stocks, and how much cannot.
 - **Tracking factor risk over time.** Section 3.4 shows that a factor's volatility changes a lot from year to year. The dashboard will recompute it over a moving one-year window, so an investor who wants steady risk can see when a factor has become more volatile and hold less of it.
 - **Whether sensitivities change over time.** Each stock's sensitivities are re-estimated one year at a time. This matters to a portfolio manager because decisions are made on past estimates: a stock bought as defensive, with a low beta, may have become more sensitive to the market, and the portfolio would then fall more than planned in a downturn.
@@ -211,7 +211,7 @@ The next stage turns the panel and charts into an interactive dashboard in R Shi
 
 # Conclusion
 
-Taken together, the four charts point the same way: the market alone does not explain these stocks well. The other factors followed very different paths from the market with risk that changed sharply from year to year, stocks carried very different amounts of market risk, and even in 2020 most of the average stock's daily movement came from something other than the market. A view based only on the market would miss much of what drives Indian stocks, which is why the next stage measures all four factors together.
+Taken together, the four charts point the same way: the market alone does not explain these stocks well. The other factors followed very different paths from the market with risk that changed sharply from year to year, stocks carried very different amounts of market risk, and even in 2020 most of the average stock's daily movement came from something other than the market. A view based only on the market would miss much of what drives Indian stocks, which is why the next stage measures all four factors together and how much is left after them.
 
 # References {-}
 
