@@ -56,3 +56,19 @@ split_plot = ggplot(split_data, aes(x = share, y = stock, fill = part)) +
   theme_minimal() +
   theme(legend.position = "top", panel.grid.major.y = element_blank())
 split_plot
+
+#-------------------------------------------------------------
+vol_data = estimates$factor_vol
+
+vol_data$factor = factor(vol_data$factor,levels = c("mf","smb","hml","wml"),
+                         labels = c("Market","Size","Value","Momentum"))
+vol_plot = ggplot(vol_data, aes(x = date, y = vol, colour = factor)) +
+  geom_line(linewidth = 0.5) +
+  scale_colour_manual(values = c("Market" = "black", "Size" = "red",
+                                 "Value" = "blue", "Momentum" = "orange")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Volatility of each factor over the past year, rolling daily",
+       x = NULL, y = "Annualised volatility", colour = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top", panel.grid.minor = element_blank())
+vol_plot
