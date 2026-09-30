@@ -213,7 +213,7 @@ The next stage turns the panel and charts into an interactive dashboard in R Shi
 
 Taken together, the four charts point the same way: the market alone does not explain these stocks well. The other factors followed very different paths from the market with risk that changed sharply from year to year, stocks carried very different amounts of market risk, and even in 2020 most of the average stock's daily movement came from something other than the market. A view based only on the market would miss much of what drives Indian stocks, which is why the next stage measures all four factors together and how much is left after them.
 
-# References {-}
+# References and Acknowledgements {-}
 
 1. Agarwalla, S. K., Jacob, J. and Varma, J. R. (2013). Four factor model in Indian equities market. Working Paper No. 2013-09-05, Indian Institute of Management, Ahmedabad. Data library: <https://faculty.iima.ac.in/iffm/Indian-Fama-French-Momentum/>
 
@@ -222,3 +222,5 @@ Taken together, the four charts point the same way: the market alone does not ex
 3. National Stock Exchange of India. NIFTY 50 constituent list, accessed 14 September 2026.
 
 4. Yahoo Finance. Daily historical stock prices, accessed through the `tidyquant` R package, September 2026.
+
+5. Claude (Anthropic), large language model. Used to write and refine R code, particularly for the charts, and to review drafts. All methodological, analytical and design decisions were reviewed and validated by the author, who is responsible for the final outputs and conclusions.
