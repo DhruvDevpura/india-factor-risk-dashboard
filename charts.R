@@ -134,3 +134,4 @@ error_plot = ggplot(error_data, aes(x = hl_label, y = error, colour = prediction
        x = "Half life (trading days)", y = "Average gap, predicted vs actual", colour = NULL) +
   theme_minimal() +
   theme(legend.position = "top", panel.grid.minor = element_blank())
+
