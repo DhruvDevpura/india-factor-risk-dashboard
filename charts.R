@@ -72,3 +72,65 @@ vol_plot = ggplot(vol_data, aes(x = date, y = vol, colour = factor)) +
   theme_minimal() +
   theme(legend.position = "top", panel.grid.minor = element_blank())
 vol_plot
+
+#Chart 4: does the model predict next year's risk? -------------------------------
+#Two charts: a scatter for one chosen half life (the slider in the app),
+#and an error curve across all half lives.
+
+backtest = readRDS("data/backtest.rds")
+
+#Chart 4a: predicted against actual volatility for one half life
+make_backtest_plot = function(chosen_hl) {
+  
+  #Step 1: keep only the chosen half life (348 portfolios x 2 test years)
+  one_hl = backtest[backtest$half_life == chosen_hl, ]
+  
+  #Step 2: panel names that say which years built the model
+  one_hl$panel = ifelse(one_hl$test_year == 2024,
+                        "Predicting 2024 (built on 2020 to 2023)",
+                        "Predicting 2025 (built on 2020 to 2024)")
+  
+  #Step 3: draw. Each dot is one portfolio, dashed line = perfect prediction
+  ggplot(one_hl, aes(x = predicted, y = actual, colour = type)) +
+    geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = "dashed") +
+    geom_point(alpha = 0.6) +
+    geom_point(data = one_hl[one_hl$type %in% c("Equal weight", "IT basket"), ], size = 4) +
+    facet_wrap(~ panel) +
+    scale_colour_manual(values = c("Single stock" = "grey60", "Random" = "steelblue",
+                                   "Equal weight" = "black", "IT basket" = "firebrick")) +
+    scale_x_continuous(labels = scales::percent) +
+    scale_y_continuous(labels = scales::percent) +
+    coord_equal() +
+    labs(x = "Predicted volatility", y = "Actual volatility", colour = NULL) +
+    theme_minimal() +
+    theme(legend.position = "top",
+          panel.border = element_rect(colour = "grey70", fill = NA),   #a box around each panel
+          panel.spacing = unit(1.5, "lines"))                          #space between the two panels
+}
+
+#Chart 4b: average prediction error for every half life
+#Step 1: average absolute error for each test year and half life
+error_data = aggregate(abs(predicted - actual) ~ test_year + half_life, data = backtest, FUN = mean)
+names(error_data)[3] = "error"
+
+#Step 2: half life as a label, with Inf shown as "Equal"
+error_data$hl_label = factor(ifelse(is.infinite(error_data$half_life), "Equal",
+                                    as.character(error_data$half_life)),
+                             levels = c("21", "42", "63", "126", "252", "504", "Equal"))
+
+#Step 3: legend names that say which years built the model
+error_data$prediction = ifelse(error_data$test_year == 2024,
+                               "Predicting 2024 (built on 2020 to 2023)",
+                               "Predicting 2025 (built on 2020 to 2024)")
+
+#Step 4: draw
+error_plot = ggplot(error_data, aes(x = hl_label, y = error, colour = prediction, group = prediction)) +
+  geom_line() +
+  geom_point(size = 2.5) +
+  scale_colour_manual(values = c("Predicting 2024 (built on 2020 to 2023)" = "grey50",
+                                 "Predicting 2025 (built on 2020 to 2024)" = "steelblue")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Average prediction error by half life",
+       x = "Half life (trading days)", y = "Average gap, predicted vs actual", colour = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top", panel.grid.minor = element_blank())
