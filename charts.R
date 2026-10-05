@@ -2,7 +2,7 @@ library(ggplot2)
 
 estimates = readRDS("data/estimates.rds")
 nifty_list = read.csv("data_raw/ind_nifty50list.csv")
-
+panel = readRDS("data/panel.rds")
 nifty_list$ticker = paste0(nifty_list$Symbol,".NS")
 stocks = merge(estimates$loadings,nifty_list[,c("ticker","Industry")],by = "ticker")
 
@@ -74,23 +74,23 @@ vol_plot = ggplot(vol_data, aes(x = date, y = vol, colour = factor)) +
 vol_plot
 
 #Chart 4: does the model predict next year's risk? -------------------------------
-#Two charts: a scatter for one chosen half life (the slider in the app),
-#and an error curve across all half lives.
+#Two charts: a scatter for one chosen half life and model (the slider and dropdown in the app),
+#and an error curve across all half lives for both models.
 
 backtest = readRDS("data/backtest.rds")
 
-#Chart 4a: predicted against actual volatility for one half life
-make_backtest_plot = function(chosen_hl) {
+#Chart 4a: predicted against actual volatility for one half life and one model
+make_backtest_plot = function(chosen_hl, chosen_model = "Full covariance")
+{
+  #keep only the chosen half life and model (348 portfolios x 2 test years)
+  one_hl = backtest[backtest$half_life == chosen_hl & backtest$model == chosen_model, ]
   
-  #Step 1: keep only the chosen half life (348 portfolios x 2 test years)
-  one_hl = backtest[backtest$half_life == chosen_hl, ]
-  
-  #Step 2: panel names that say which years built the model
+  #panel names that say which years built the model
   one_hl$panel = ifelse(one_hl$test_year == 2024,
                         "Predicting 2024 (built on 2020 to 2023)",
                         "Predicting 2025 (built on 2020 to 2024)")
   
-  #Step 3: draw. Each dot is one portfolio, dashed line = perfect prediction
+  #draw. Each dot is one portfolio, dashed line = perfect prediction
   ggplot(one_hl, aes(x = predicted, y = actual, colour = type)) +
     geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = "dashed") +
     geom_point(alpha = 0.6) +
@@ -101,37 +101,40 @@ make_backtest_plot = function(chosen_hl) {
     scale_x_continuous(labels = scales::percent) +
     scale_y_continuous(labels = scales::percent) +
     coord_equal() +
-    labs(x = "Predicted volatility", y = "Actual volatility", colour = NULL) +
+    labs(title = chosen_model, x = "Predicted volatility", y = "Actual volatility", colour = NULL) +
     theme_minimal() +
     theme(legend.position = "top",
           panel.border = element_rect(colour = "grey70", fill = NA),   #a box around each panel
           panel.spacing = unit(1.5, "lines"))                          #space between the two panels
 }
 
-#Chart 4b: average prediction error for every half life
-#Step 1: average absolute error for each test year and half life
-error_data = aggregate(abs(predicted - actual) ~ test_year + half_life, data = backtest, FUN = mean)
-names(error_data)[3] = "error"
+#Chart 4b: average percentage error for every half life, both models
+#Uses the summary saved by 5_backtest.R, so the chart and the README show the same numbers.
+#Single stocks are left out: both models give them identical predictions.
+error_data = readRDS("data/summary_multi.rds")
 
-#Step 2: half life as a label, with Inf shown as "Equal"
-error_data$hl_label = factor(ifelse(is.infinite(error_data$half_life), "Equal",
+#half life as a label, with Inf shown as "No decay"
+error_data$hl_label = factor(ifelse(is.infinite(error_data$half_life), "No decay",
                                     as.character(error_data$half_life)),
-                             levels = c("21", "42", "63", "126", "252", "504", "Equal"))
+                             levels = c("21", "42", "63", "126", "252", "504", "No decay"))
 
-#Step 3: legend names that say which years built the model
+#panel names that say which years built the model
 error_data$prediction = ifelse(error_data$test_year == 2024,
                                "Predicting 2024 (built on 2020 to 2023)",
                                "Predicting 2025 (built on 2020 to 2024)")
 
-#Step 4: draw
-error_plot = ggplot(error_data, aes(x = hl_label, y = error, colour = prediction, group = prediction)) +
+#draw. One line per model, one panel per test year
+error_plot = ggplot(error_data, aes(x = hl_label, y = ape, colour = model, group = model)) +
   geom_line() +
   geom_point(size = 2.5) +
-  scale_colour_manual(values = c("Predicting 2024 (built on 2020 to 2023)" = "grey50",
-                                 "Predicting 2025 (built on 2020 to 2024)" = "steelblue")) +
+  facet_wrap(~ prediction) +
+  scale_colour_manual(values = c("Full covariance" = "black",
+                                 "Factor + diagonal" = "firebrick")) +
   scale_y_continuous(labels = scales::percent) +
-  labs(title = "Average prediction error by half life",
-       x = "Half life (trading days)", y = "Average gap, predicted vs actual", colour = NULL) +
+  labs(title = "Average prediction error by half life, 302 multi-stock portfolios",
+       x = "Half life (trading days)", y = "Mean absolute percentage error", colour = NULL) +
   theme_minimal() +
-  theme(legend.position = "top", panel.grid.minor = element_blank())
-
+  theme(legend.position = "top",
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "grey70", fill = NA),
+        panel.spacing = unit(1.5, "lines"))
