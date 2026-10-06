@@ -1,4 +1,5 @@
 library(ggplot2)
+library(patchwork)
 
 estimates = readRDS("data/estimates.rds")
 nifty_list = read.csv("data_raw/ind_nifty50list.csv")
@@ -6,56 +7,93 @@ panel = readRDS("data/panel.rds")
 nifty_list$ticker = paste0(nifty_list$Symbol,".NS")
 stocks = merge(estimates$loadings,nifty_list[,c("ticker","Industry")],by = "ticker")
 
-heat_data = data.frame(
-  stock = rep(stocks$ticker,4),
-  industry = rep(stocks$Industry,4),
-  factor = rep(c("Market","Size","Value","Momentum"),each = 46),
-  beta = c(stocks$b_mkt,stocks$b_smb,stocks$b_hml,stocks$b_wml)
-)
-heat_data$factor = factor(heat_data$factor,levels = c("Market","Size","Value","Momentum"))
+#Shared look for every dashboard chart
+theme_dash = function(base_size = 13)
+{
+  theme_minimal(base_size = base_size) +
+    theme(plot.title = element_text(face = "bold"),
+          plot.title.position = "plot",
+          plot.subtitle = element_text(colour = "grey35"),
+          panel.grid.minor = element_blank())
+}
 
-#no shade for the market column (all betas are positive, it would be all red)
-heat_data$shade = heat_data$beta
-heat_data$shade[heat_data$factor == "Market"] = NA
+#Stocks and sectors page: heat map of loadings and risk split, same rows ----------
+#Table of everything needed per stock, one row per stock
+stock_info = estimates$loadings
+stock_info = merge(stock_info, nifty_list[,c("ticker","Industry")], by = "ticker")
+stock_info$name = sub(".NS", "", stock_info$ticker, fixed = TRUE)
+stock_info$market_share = stock_info$r2_mkt
+stock_info$other_share = stock_info$r2_4f - stock_info$r2_mkt
+stock_info$own_share = 1 - stock_info$r2_4f
 
-heatmap_plot = ggplot(heat_data, aes(x = factor, y = stock, fill = shade)) +
-  geom_tile(colour = "white") +
-  geom_text(aes(label = round(beta, 2)), size = 2.7) +
-  scale_fill_gradient2(low = "firebrick", mid = "white", high = "seagreen",
-                       limits = c(-1, 1), oob = scales::squish, na.value = "grey95") +
-  facet_grid(industry ~ ., scales = "free_y", space = "free_y") +
-  labs(title = "Factor loadings of 46 NIFTY 50 stocks, 2020 to 2025",
-       x = NULL, y = NULL, fill = "Loading") +
-  theme_minimal() +
-  theme(strip.text.y = element_text(angle = 0, hjust = 0))
-heatmap_plot
-#----------------------------------------------------------------
-
-shares = estimates$loadings
-shares$market = shares$r2_mkt #explained by market alone
-shares$other = shares$r2_4f - shares$r2_mkt #extra explained by size,value and momentum
-shares$own = 1 - shares$r2_4f #not explained by any factor (stock specific)
-
-split_data = data.frame(
-  stock = rep(shares$ticker,3),
-  part = rep(c("Market","Other three factors","Stock-specific"),each=46),
-  share = c(shares$market,shares$other,shares$own)
-)
-split_data$stock = factor(split_data$stock, levels = shares$ticker[order(shares$r2_4f)])
-split_data$part = factor(split_data$part,levels = c("Stock-specific", "Other three factors", "Market"))
-
-split_plot = ggplot(split_data, aes(x = share, y = stock, fill = part)) +
-  geom_col(width = 0.8) +
-  scale_fill_manual(values = c("Market" = "grey30",
-                               "Other three factors" = "steelblue",
-                               "Stock-specific" = "grey85")) +
-  scale_x_continuous(labels = scales::percent) +
-  guides(fill = guide_legend(reverse = TRUE)) +   #legend in the same order as the bars
-  labs(title = "Where each stock's daily movement comes from, 2020 to 2025",
-       x = "Share of daily variance", y = NULL, fill = NULL) +
-  theme_minimal() +
-  theme(legend.position = "top", panel.grid.major.y = element_blank())
-split_plot
+make_stock_plot = function(chosen_tickers)
+{
+  #keep the chosen stocks, ordered by sector then by market loading
+  info = stock_info[stock_info$ticker %in% chosen_tickers,]
+  info = info[order(info$Industry, info$b_mkt),]
+  info$name = factor(info$name, levels = unique(info$name))
+  
+  # heat map data, one row per stock and factor
+  heat = data.frame(
+    name = rep(info$name, 4),
+    Industry = rep(info$Industry, 4),
+    factor = factor(rep(c("Market","Size","Value","Momentum"), each = nrow(info)),
+                    levels = c("Market","Size","Value","Momentum")),
+    beta = c(info$b_mkt, info$b_smb, info$b_hml, info$b_wml)
+  )
+  heat$shade = ifelse(heat$factor == "Market", NA, heat$beta)   #market column is not shaded
+  heat$text_col = ifelse(!is.na(heat$shade) & abs(heat$beta) > 0.45, "white", "grey15")
+  
+  heat_plot = ggplot(heat, aes(x = factor, y = name)) +
+    geom_tile(aes(fill = shade), colour = "white", linewidth = 1) +
+    geom_text(aes(label = sprintf("%.2f", round(beta, 2) + 0), colour = text_col), size = 3.6) +   #+ 0 turns -0.00 into 0.00
+    scale_colour_identity() +
+    scale_fill_gradientn(colours = c("#8E1B1B", "#D9534F", "#F4C7C3", "#F7F7F7",
+                                     "#C5E5CD", "#4CA36A", "#1D6B37"),
+                         limits = c(-0.9, 0.9), oob = scales::squish,
+                         na.value = "#E4E7EB", guide = "none") +
+    scale_x_discrete(position = "top") +
+    facet_grid(Industry ~ ., scales = "free_y", space = "free_y", switch = "y",
+               labeller = label_wrap_gen(width = 18)) +
+    labs(title = "Factor loadings",
+         subtitle = "Green: moves with the factor. Red: moves against it.", x = NULL, y = NULL) +
+    theme_dash() +
+    theme(panel.grid = element_blank(),
+          strip.placement = "outside",
+          strip.text.y.left = element_text(angle = 0, hjust = 1, face = "bold", colour = "grey30"),
+          axis.text.x = element_text(face = "bold"),
+          panel.spacing = unit(0.4, "lines"))
+  
+  #Step 3: risk split data, same stocks in the same order
+  split = data.frame(
+    name = rep(info$name, 3),
+    Industry = rep(info$Industry, 3),
+    part = factor(rep(c("Market","Other three factors","Stock-specific"), each = nrow(info)),
+                  levels = c("Stock-specific","Other three factors","Market")),
+    share = c(info$market_share, info$other_share, info$own_share)
+  )
+  
+  split_plot = ggplot(split, aes(x = share, y = name, fill = part)) +
+    geom_col(width = 0.75) +
+    geom_text(data = info, aes(x = r2_4f, y = name, label = scales::percent(r2_4f, accuracy = 1)),
+              inherit.aes = FALSE, hjust = -0.15, size = 3.4, colour = "grey15") +
+    scale_fill_manual(values = c("Market" = "#2F3E4E", "Other three factors" = "#5B8DB8",
+                                 "Stock-specific" = "#E4E7EB")) +
+    scale_x_continuous(labels = scales::percent, position = "top", expand = c(0, 0)) +
+    facet_grid(Industry ~ ., scales = "free_y", space = "free_y") +
+    guides(fill = guide_legend(reverse = TRUE)) +
+    labs(title = "Where daily movement comes from",
+         subtitle = "Number: share explained by the four factors", x = NULL, y = NULL, fill = NULL) +
+    theme_dash() +
+    theme(panel.grid.major.y = element_blank(),
+          strip.text = element_blank(),
+          axis.text.y = element_blank(),
+          legend.position = "bottom",
+          panel.spacing = unit(0.4, "lines"))
+  
+  #Step 4: side by side, rows aligned
+  heat_plot + split_plot + plot_layout(widths = c(1.1, 1))
+}
 
 #-------------------------------------------------------------
 vol_data = estimates$factor_vol
