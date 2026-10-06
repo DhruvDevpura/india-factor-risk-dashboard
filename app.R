@@ -55,8 +55,8 @@ ui = dashboardPage(
                                  choices = c("21","42","63","126","252","504","No decay" = "Inf"),
                                  selected = "252",inline = TRUE))),
               fluidRow(box(width = 12,plotOutput("backtest_chart",height = "560px"))),
-              fluidRow(box(width = 12,plotOutput("error_chart",height = "420px"))),
               fluidRow(box(width = 12,plotOutput("dumbbell_chart",height = "360px"))),
+              fluidRow(box(width = 12,plotOutput("error_chart",height = "420px"))),
               fluidRow(
                 box(width = 12,
                     p(strong("Chosen using 2024, the best half life was 252 days (6.7% error)."),
