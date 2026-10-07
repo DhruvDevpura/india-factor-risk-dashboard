@@ -2,6 +2,7 @@ library(shiny)
 library(bslib) #the top navigation bar, cards and number tiles
 library(ggplot2)
 library(patchwork)
+library(DT) #searchable, sortable tables
 
 source("charts.R") #loads the data and every chart function
 
@@ -69,6 +70,23 @@ ui = page_navbar(
                            value_box("Portfolios tested","348",p("Forecasts checked on 2024 and 2025"),showcase = icon("flask"),class = "vb-green")),
             card(card_body(p("Introduction text goes here.")))),
   
+  nav_panel("Compare stocks",icon = icon("code-compare"),
+            page_head("Compare two stocks",
+                      "Just the data, no model: how each stock grew, fell and moved, next to the NIFTY 50."),
+            layout_sidebar(fillable = FALSE,
+                           sidebar = sidebar(title = "Pick two",width = 280,bg = "#1F2A36",
+                                             selectInput("cmp_a","First stock",choices = all_stocks,selected = "TCS"),
+                                             selectInput("cmp_b","Second stock",choices = all_stocks,selected = "SBIN"),
+                                             p(class = "weights-note","Try two stocks from the same sector, such as TCS and INFY, then two from different sectors.")),
+                           layout_columns(fill = FALSE,
+                                          value_box("Move together",textOutput("cmp_corr"),p("correlation of daily returns, 1 means in step")),
+                                          value_box("Sectors",textOutput("cmp_sector"),textOutput("cmp_sector_names",container = p),class = "vb-blue")),
+                           card(tableOutput("cmp_table")),
+                           card(plotOutput("cmp_growth",height = "360px")),
+                           card(plotOutput("cmp_years",height = "340px")),
+                           card(plotOutput("cmp_fall",height = "300px")),
+                           card(plotOutput("cmp_vol",height = "300px")))),
+  
   nav_panel("Stocks and sectors",icon = icon("table-cells"),
             page_head("How each stock moves with the factors",
                       "Left: loading on each factor. Right: how much of each stock's daily movement the factors explain."),
@@ -133,10 +151,29 @@ ui = page_navbar(
                                        tableOutput("returns_table"),
                                        p(class = "weights-note",
                                          "NIFTY 50 is the price index without dividends, so its return is understated by roughly its dividend yield each year.",
-                                         "All 46 stocks are today's NIFTY 50 members, so every one of them survived; that flatters the portfolio."),
+                                         "The stock list is today's NIFTY 50, which includes stocks that joined because they had already risen, and NIFTY weights stocks by size while these weights are your own. So a gap to the NIFTY is not evidence of beating the market."),
                                        plotOutput("growth_chart",height = "340px"),
                                        plotOutput("drawdown_chart",height = "300px"),
                                        plotOutput("monthly_chart",height = "320px"))))),
+  
+  nav_panel("Data",icon = icon("table"),
+            page_head("Explore and download the data",
+                      "Filter any of the four datasets behind this dashboard. The download is exactly the table shown."),
+            layout_sidebar(fillable = FALSE,
+                           sidebar = sidebar(title = "Filter",width = 300,bg = "#1F2A36",
+                                             selectInput("data_set","Dataset",choices = datasets),
+                                             conditionalPanel("input.data_set != 'Out-of-sample results'",
+                                                              selectizeInput("data_sectors","Sectors (empty means all)",choices = all_sectors,
+                                                                             multiple = TRUE,options = list(plugins = list("remove_button"))),
+                                                              selectizeInput("data_stocks","Stocks (empty means all)",choices = all_stocks,
+                                                                             multiple = TRUE,options = list(plugins = list("remove_button")))),
+                                             conditionalPanel("input.data_set == 'Daily returns and factors'",
+                                                              dateRangeInput("data_dates","Dates",start = min(panel$date),end = max(panel$date),
+                                                                             min = min(panel$date),max = max(panel$date))),
+                                             downloadButton("data_download","Download CSV",class = "btn-light w-100"),
+                                             textOutput("data_rows",container = function(...) p(class = "weights-note",...)),
+                                             p(class = "weights-note","Numbers are decimals: 0.01 means 1%.")),
+                           card(DTOutput("data_table",fill = FALSE)))), #fill = FALSE lets the card grow with the table
   
   nav_panel("Conclusion",icon = icon("flag-checkered"),
             card(card_body(p("Conclusion text goes here."))))
@@ -317,6 +354,61 @@ server = function(input,output,session)
       validate(need(length(input$port_stocks) > 0,"Pick at least one stock."))
       make_risk_plot(port_tickers(),port_weights())
     },res = 96)
+  #Data page: the filtered table, shown and downloaded
+  data_shown = reactive(
+    {
+      explorer_data(input$data_set,input$data_sectors,input$data_stocks,input$data_dates)
+    })
+  
+  output$data_rows = renderText(paste(format(nrow(data_shown()),big.mark = ","),"rows"))
+  
+  output$data_table = renderDT(
+    {
+      shown = data_shown()
+      numbers = names(shown)[sapply(shown,is.numeric) & !(names(shown) %in% c("year","test_year","half_life"))]
+      table = datatable(shown,rownames = FALSE,options = list(pageLength = 15,scrollX = TRUE))
+      formatRound(table,numbers,digits = 4) #rounded on screen only, the download keeps full precision
+    })
+  
+  output$data_download = downloadHandler(
+    filename = function()
+    {
+      paste0(gsub("[^a-z0-9]+","_",tolower(input$data_set)),".csv")
+    },
+    content = function(file)
+    {
+      write.csv(data_shown(),file,row.names = FALSE)
+    })
+  #Compare page
+  cmp_pair = reactive(
+    {
+      validate(need(input$cmp_a != input$cmp_b,"Pick two different stocks."))
+      c(input$cmp_a,input$cmp_b)
+    })
+  
+  output$cmp_corr = renderText(
+    {
+      d = compare_daily(cmp_pair()[1],cmp_pair()[2])
+      sprintf("%.2f",cor(d$a,d$b))
+    })
+  
+  output$cmp_sector = renderText(
+    {
+      sectors = stock_info$Industry[match(cmp_pair(),stock_info$name)]
+      ifelse(sectors[1] == sectors[2],"Same sector","Different sectors")
+    })
+  
+  output$cmp_sector_names = renderText(
+    {
+      sectors = stock_info$Industry[match(cmp_pair(),stock_info$name)]
+      paste0(cmp_pair()[1],": ",sectors[1],". ",cmp_pair()[2],": ",sectors[2],".")
+    })
+  
+  output$cmp_table = renderTable(compare_table(cmp_pair()[1],cmp_pair()[2]),striped = TRUE,hover = TRUE,width = "100%",align = "lrrrrrr")
+  output$cmp_growth = renderPlot(make_compare_growth(cmp_pair()[1],cmp_pair()[2]),res = 96)
+  output$cmp_years = renderPlot(make_compare_years(cmp_pair()[1],cmp_pair()[2]),res = 96)
+  output$cmp_fall = renderPlot(make_compare_fall(cmp_pair()[1],cmp_pair()[2]),res = 96)
+  output$cmp_vol = renderPlot(make_compare_vol(cmp_pair()[1],cmp_pair()[2]),res = 96)
 }
 
 shinyApp(ui,server)

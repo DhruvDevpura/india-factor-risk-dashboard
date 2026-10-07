@@ -516,3 +516,193 @@ make_monthly_plot = function(chosen_stocks,chosen_weights)
     theme(panel.grid = element_blank(),
           axis.text = element_text(face = "bold"))
 }
+
+#----------------------------------------------------------------
+#Data page
+
+datasets = c("Daily returns and factors","Factor loadings, 2020 to 2025","Yearly loadings with 95% intervals","Out-of-sample results")
+
+#one dataset, filtered by sector, stock and dates; the same table is shown and downloaded
+explorer_data = function(dataset,sectors,stocks,dates)
+{
+  sector_of = stock_info$Industry[match(panel$ticker,stock_info$ticker)]
+  
+  if(dataset == "Daily returns and factors")
+  {
+    out = data.frame(date = panel$date,stock = sub(".NS","",panel$ticker,fixed = TRUE),sector = sector_of,
+                     ret = panel$ret,exret = panel$exret,rf = panel$rf,
+                     mf = panel$mf,smb = panel$smb,hml = panel$hml,wml = panel$wml,nifty_ret = panel$nifty_ret)
+    out = out[out$date >= dates[1] & out$date <= dates[2],]
+  }
+  else if(dataset == "Factor loadings, 2020 to 2025")
+  {
+    out = data.frame(stock = stock_info$name,sector = stock_info$Industry,alpha = stock_info$alpha,
+                     b_mkt = stock_info$b_mkt,b_smb = stock_info$b_smb,b_hml = stock_info$b_hml,b_wml = stock_info$b_wml,
+                     r2_mkt = stock_info$r2_mkt,r2_4f = stock_info$r2_4f)
+  }
+  else if(dataset == "Yearly loadings with 95% intervals")
+  {
+    y = estimates$yearly
+    out = data.frame(stock = sub(".NS","",y$ticker,fixed = TRUE),
+                     sector = stock_info$Industry[match(y$ticker,stock_info$ticker)],
+                     year = y$year,factor = as.character(y$factor),
+                     estimate = y$est,std_error = y$se,lower_95 = y$lo,upper_95 = y$hi)
+  }
+  else
+  {
+    out = backtest[,c("test_year","half_life","model","portfolio","type","predicted","actual")]
+    out$half_life = ifelse(is.infinite(out$half_life),"No decay",as.character(out$half_life))
+    out$portfolio = sub(".NS","",out$portfolio,fixed = TRUE)
+    return(out) #portfolios, not stocks, so the stock and sector filters do not apply
+  }
+  
+  if(length(sectors) > 0)
+  {
+    out = out[out$sector %in% sectors,]
+  }
+  if(length(stocks) > 0)
+  {
+    out = out[out$stock %in% stocks,]
+  }
+  out
+}
+
+#----------------------------------------------------------------
+#Compare two stocks page, direct data only
+
+compare_cols = c("#2F3E4E","#2A9D8F","#E07B39") #first stock, second stock, NIFTY 50 (orange as on the Portfolio page)
+
+#both stocks' daily returns and the NIFTY's, one row per day
+compare_daily = function(stock_a,stock_b)
+{
+  a = panel[panel$ticker == paste0(stock_a,".NS"),]
+  a = a[order(a$date),]
+  b = panel[panel$ticker == paste0(stock_b,".NS"),]
+  b = b[order(b$date),]
+  data.frame(date = a$date,a = a$ret,b = b$ret,nifty = a$nifty_ret,rf = a$rf)
+}
+
+#the three return series stacked into one long table, so one chart can draw all three
+compare_long = function(stock_a,stock_b,values_a,values_b,values_nifty,dates)
+{
+  data.frame(date = rep(dates,3),
+             value = c(values_a,values_b,values_nifty),
+             who = factor(rep(c(stock_a,stock_b,"NIFTY 50"),each = length(dates)),levels = c(stock_a,stock_b,"NIFTY 50")))
+}
+
+compare_table = function(stock_a,stock_b)
+{
+  d = compare_daily(stock_a,stock_b)
+  years = as.numeric(max(d$date) - min(d$date))/365.25
+  rets = list(d$a,d$b,d$nifty)
+  out = data.frame(Stock = c(stock_a,stock_b,"NIFTY 50"),Growth = NA,Return = NA,Volatility = NA,Sharpe = NA,Fall = NA,Worst = NA)
+  
+  for(j in 1:3)
+  {
+    r = rets[[j]]
+    value = 100*cumprod(1 + r)
+    worst = which.min(r)
+    out$Growth[j] = sprintf("%.2fx",value[length(value)]/100)
+    out$Return[j] = scales::percent((value[length(value)]/100)^(1/years) - 1,accuracy = 0.1)
+    out$Volatility[j] = scales::percent(sd(r)*sqrt(252),accuracy = 0.1)
+    out$Sharpe[j] = sprintf("%.2f",mean(r - d$rf)*252/(sd(r)*sqrt(252)))
+    out$Fall[j] = scales::percent(min(value/pmax(cummax(value),100) - 1),accuracy = 0.1)
+    out$Worst[j] = paste0(scales::percent(r[worst],accuracy = 0.1)," (",format(d$date[worst],"%d %b %Y"),")")
+  }
+  names(out) = c("","Growth","Return per year","Volatility per year","Sharpe ratio","Biggest fall","Worst day")
+  out
+}
+
+make_compare_growth = function(stock_a,stock_b)
+{
+  d = compare_daily(stock_a,stock_b)
+  lines = compare_long(stock_a,stock_b,100*cumprod(1 + d$a),100*cumprod(1 + d$b),100*cumprod(1 + d$nifty),d$date)
+  ends = lines[lines$date == max(lines$date),]
+  ends = ends[order(ends$value),]
+  ends$label = paste0(ends$who," Rs ",round(ends$value))
+  for(i in 2:nrow(ends)) #push the end labels apart so they do not overlap
+  {
+    ends$value[i] = max(ends$value[i],ends$value[i-1]*1.12)
+  }
+  
+  ggplot(lines,aes(x = date,y = value,colour = who)) +
+    geom_hline(yintercept = 100,colour = "grey70",linetype = "dashed") +
+    geom_line(linewidth = 0.8) +
+    geom_text(data = ends,aes(label = label),hjust = -0.08,size = 3.8,fontface = "bold") +
+    scale_colour_manual(values = compare_cols,guide = "none") +
+    scale_y_log10(labels = function(x) paste0("Rs ",x)) + #log scale: the same % move looks the same size at any level
+    scale_x_date(expand = expansion(mult = c(0.01,0.25))) + #room on the right for the labels
+    labs(title = "Growth of Rs 100 invested in January 2020",
+         subtitle = "Log scale, so equal distances mean equal % changes. NIFTY 50 is the price index, without dividends.",
+         x = NULL,y = NULL) +
+    theme_dash()
+}
+
+make_compare_years = function(stock_a,stock_b)
+{
+  d = compare_daily(stock_a,stock_b)
+  d$year = format(d$date,"%Y")
+  yearly = data.frame(year = sort(unique(d$year)))
+  yearly$a = as.numeric(tapply(1 + d$a,d$year,prod)) - 1 #compound the days of each year
+  yearly$b = as.numeric(tapply(1 + d$b,d$year,prod)) - 1
+  yearly$nifty = as.numeric(tapply(1 + d$nifty,d$year,prod)) - 1
+  bars = data.frame(year = rep(yearly$year,3),
+                    ret = c(yearly$a,yearly$b,yearly$nifty),
+                    who = factor(rep(c(stock_a,stock_b,"NIFTY 50"),each = nrow(yearly)),levels = c(stock_a,stock_b,"NIFTY 50")))
+  
+  ggplot(bars,aes(x = year,y = ret,fill = who)) +
+    geom_hline(yintercept = 0,colour = "grey50") +
+    geom_col(position = position_dodge(width = 0.85),width = 0.8) +
+    geom_text(aes(label = sprintf("%+.0f",round(100*ret) + 0),vjust = ifelse(ret >= 0,-0.4,1.3)),
+              position = position_dodge(width = 0.85),size = 3.2,colour = "grey20") +
+    scale_fill_manual(values = compare_cols) +
+    scale_y_continuous(labels = scales::percent,expand = expansion(mult = 0.12)) +
+    labs(title = "Return in each year",subtitle = "Numbers are % returns for the calendar year.",x = NULL,y = NULL,fill = NULL) +
+    theme_dash() +
+    theme(legend.position = "top",panel.grid.major.x = element_blank())
+}
+
+make_compare_fall = function(stock_a,stock_b)
+{
+  d = compare_daily(stock_a,stock_b)
+  fall = function(r)
+  {
+    value = 100*cumprod(1 + r)
+    value/pmax(cummax(value),100) - 1 #fall from the highest value so far
+  }
+  lines = compare_long(stock_a,stock_b,fall(d$a),fall(d$b),fall(d$nifty),d$date)
+  
+  ggplot(lines,aes(x = date,y = value,colour = who)) +
+    geom_hline(yintercept = 0,colour = "grey60") +
+    geom_line(linewidth = 0.6) +
+    scale_colour_manual(values = compare_cols) +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = "Fall from the previous high",subtitle = "0% means at a new high.",x = NULL,y = NULL,colour = NULL) +
+    theme_dash() +
+    theme(legend.position = "top")
+}
+
+make_compare_vol = function(stock_a,stock_b)
+{
+  d = compare_daily(stock_a,stock_b)
+  n = nrow(d)
+  vol = matrix(NA,nrow = n,ncol = 3)
+  for(t in 252:n) #volatility over the past 252 trading days, recalculated every day
+  {
+    window = (t - 251):t
+    vol[t,1] = sd(d$a[window])*sqrt(252)
+    vol[t,2] = sd(d$b[window])*sqrt(252)
+    vol[t,3] = sd(d$nifty[window])*sqrt(252)
+  }
+  lines = compare_long(stock_a,stock_b,vol[,1],vol[,2],vol[,3],d$date)
+  lines = lines[!is.na(lines$value),] #the first year has no full window
+  
+  ggplot(lines,aes(x = date,y = value,colour = who)) +
+    geom_line(linewidth = 0.7) +
+    scale_colour_manual(values = compare_cols) +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = "How risky each was over the past year",subtitle = "Volatility over the past 252 trading days, annualised.",
+         x = NULL,y = NULL,colour = NULL) +
+    theme_dash() +
+    theme(legend.position = "top")
+}
