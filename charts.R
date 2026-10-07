@@ -186,7 +186,7 @@ make_backtest_plot = function(chosen_hl)
     scale_y_continuous(labels = scales::percent,limits = c(0.08,0.60)) +
     facet_wrap(~ panel) +
     coord_equal() +
-    labs(title ="Predicted against actual risk",
+    labs(title = "Predicted against actual risk",
          subtitle = "One dot per portfolio. Dashed line: perfect prediction. Above it: risk was under-predicted.",
          x = "Predicted volatility",y = "Actual volatility",colour = NULL) +
     theme_dash() +
@@ -294,27 +294,60 @@ portfolio_risk = function(chosen_stocks,chosen_weights)
        total_vol_indep = sqrt((factor_var + specific_var_indep) * 252))
 }
 
-#the portfolio's loading on each factor
-make_exposure_plot = function(chosen_stocks,chosen_weights)
+#the portfolio's loading on each factor, year by year (weighted sum of the stocks' yearly loadings)
+portfolio_yearly = function(chosen_stocks,chosen_weights)
 {
-  result = portfolio_risk(chosen_stocks,chosen_weights)
-  exposure_data = data.frame(
-    factor = factor(c("Market","Size","Value","Momentum"),levels = c("Market","Size","Value","Momentum")),
-    exposure = as.numeric(result$exposure)
-  )
-  exposure_data$colour = ifelse(exposure_data$exposure > 0,"with","against") #green if with the factor, red if against
+  yearly = estimates$yearly
+  years = sort(unique(yearly$year))
+  factors = c("mf","smb","hml","wml")
   
-  ggplot(exposure_data,aes(x = factor,y = exposure,fill = colour)) +
-    geom_col(width = 0.6) +
-    geom_hline(yintercept = 0,colour = "grey40") +
-    geom_text(aes(label = round(exposure,2),vjust = ifelse(exposure > 0,-0.5,1.5))) +
-    scale_fill_manual(values = c("with" = "seagreen","against" = "firebrick"),guide = "none") +
-    scale_y_continuous(expand = expansion(mult = 0.15)) +
+  out = data.frame(year = rep(years,each = 4),
+                   factor = rep(factors,length(years)),
+                   loading = NA)
+  
+  for(k in 1:nrow(out))
+  {
+    rows = yearly[yearly$year == out$year[k] & yearly$factor == out$factor[k],]
+    est = rows$est[match(chosen_stocks,rows$ticker)]
+    out$loading[k] = sum(chosen_weights*est)
+  }
+  out
+}
+
+
+factor_names = c("mf" = "Market","smb" = "Size","hml" = "Value","wml" = "Momentum")
+#each factor: one dot per year, a bar from the lowest to the highest year, a big dot for 2020 to 2025
+make_exposure_range_plot = function(chosen_stocks,chosen_weights)
+{
+  full = portfolio_risk(chosen_stocks,chosen_weights)$exposure
+  full_data = data.frame(factor = factor(factor_names,levels = rev(factor_names)),loading = as.numeric(full))
+  full_data$colour = ifelse(full_data$loading > 0,"with","against")
+  
+  yearly = portfolio_yearly(chosen_stocks,chosen_weights)
+  yearly$factor = factor(factor_names[as.character(yearly$factor)],levels = rev(factor_names))
+  
+  low = aggregate(loading ~ factor,data = yearly,FUN = min)
+  high = aggregate(loading ~ factor,data = yearly,FUN = max)
+  ends = merge(low,high,by = "factor",suffixes = c("_low","_high"))
+  extremes = yearly[yearly$loading %in% c(low$loading,high$loading),] #the years at each end get a label
+  
+  ggplot(yearly,aes(x = loading,y = factor)) +
+    geom_vline(xintercept = 0,colour = "grey60") +
+    geom_segment(data = ends,aes(x = loading_low,xend = loading_high,y = factor,yend = factor),
+                 colour = "#E4E7EB",linewidth = 7,lineend = "round") +
+    geom_point(colour = "grey45",size = 2.2) +
+    geom_text(data = extremes,aes(label = year),vjust = -1.3,size = 3.2,colour = "grey40") +
+    geom_point(data = full_data,aes(colour = colour),size = 5.5) +
+    geom_text(data = full_data,aes(label = sprintf("%.2f",round(loading,2) + 0),colour = colour),
+              vjust = 2.3,size = 3.8,fontface = "bold") +
+    scale_colour_manual(values = c("with" = "#2E8B57","against" = "#C0392B"),guide = "none") +
+    scale_x_continuous(expand = expansion(mult = 0.08)) +
     labs(title = "Portfolio loading on each factor",
-         subtitle = "Green: moves with the factor. Red: moves against it.",
-         x = NULL,y = "Loading") +
-    theme_minimal() +
-    theme(panel.grid.major.x = element_blank())
+         subtitle = "Big dot: 2020 to 2025 (green with the factor, red against). Small dots: single years.",
+         x = "Loading",y = NULL) +
+    theme_dash() +
+    theme(panel.grid.major.y = element_blank(),
+          axis.text.y = element_text(face = "bold",size = 12))
 }
 
 #the portfolio's yearly volatility, and where it comes from
@@ -323,22 +356,163 @@ make_risk_plot = function(chosen_stocks,chosen_weights)
   result = portfolio_risk(chosen_stocks,chosen_weights)
   risk_data = data.frame(
     part = c("From the four factors","Stock-specific","Total","Total if stocks' own news were unrelated"),
-    vol = c(result$factor_vol,result$specific_vol,result$total_vol,result$total_vol_indep)
+    vol = c(result$factor_vol,result$specific_vol,result$total_vol,result$total_vol_indep),
+    look = c("factor","specific","total","unrelated")
   )
   risk_data$part = factor(risk_data$part,levels = rev(risk_data$part)) #keep this order, top to bottom
   
   #the parts combine as squares, not as a plain sum (variances add, volatilities do not)
   note = paste0("Parts combine as squares: ",
-                round(100 * result$factor_vol,1),"\u00b2 + ",
-                round(100 * result$specific_vol,1),"\u00b2 = ",
-                round(100 * result$total_vol,1),"\u00b2")
+                round(100*result$factor_vol,1),"\u00b2 + ",
+                round(100*result$specific_vol,1),"\u00b2 = ",
+                round(100*result$total_vol,1),"\u00b2. Dashed bar: what the textbook assumption would say.")
   
-  ggplot(risk_data,aes(x = vol,y = part,fill = part == "Total")) +
-    geom_col(width = 0.6) +
-    geom_text(aes(label = scales::percent(vol,accuracy = 0.1)),hjust = -0.2) +
-    scale_fill_manual(values = c("TRUE" = "steelblue4","FALSE" = "skyblue"),guide = "none") +
+  ggplot(risk_data,aes(x = vol,y = part)) +
+    geom_col(aes(fill = look),width = 0.6) +
+    geom_col(data = risk_data[risk_data$look == "unrelated",],fill = NA,colour = "#2F3E4E",
+             linetype = "dashed",width = 0.6) + #a hypothetical, so drawn hollow with a dashed outline
+    geom_text(aes(label = scales::percent(vol,accuracy = 0.1)),hjust = -0.2,size = 3.8,colour = "grey15") +
+    scale_fill_manual(values = c("factor" = "#5B8DB8","specific" = "#C9CED4","total" = "#2F3E4E","unrelated" = "white"),guide = "none") +
     scale_x_continuous(labels = scales::percent,expand = expansion(mult = c(0,0.2))) +
     labs(title = "Portfolio volatility per year, 2020 to 2025",subtitle = note,x = NULL,y = NULL) +
-    theme_minimal() +
-    theme(panel.grid.major.y = element_blank())
+    theme_dash() +
+    theme(panel.grid.major.y = element_blank(),
+          axis.text.y = element_text(size = 11))
+}
+#----------------------------------------------------------------
+#Portfolio page, returns
+
+month_names = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+
+#each day's return of the portfolio and of the NIFTY 50, weights kept fixed every day
+portfolio_daily = function(chosen_stocks,chosen_weights)
+{
+  dates = sort(unique(panel$date))
+  rets = matrix(NA,nrow = length(dates),ncol = length(chosen_stocks))
+  
+  for(i in 1:length(chosen_stocks))
+  {
+    one = panel[panel$ticker == chosen_stocks[i],]
+    one = one[order(one$date),]
+    rets[,i] = one$ret #full return with dividends, not the excess return
+  }
+  
+  nifty = panel[panel$ticker == chosen_stocks[1],] #every stock's rows carry the same NIFTY return and risk-free rate
+  nifty = nifty[order(nifty$date),]
+  
+  data.frame(date = dates,
+             port_ret = as.numeric(rets %*% chosen_weights),
+             nifty_ret = nifty$nifty_ret,
+             rf = nifty$rf)
+}
+
+#growth of 100 rupees and the fall from the previous high, every day
+portfolio_paths = function(chosen_stocks,chosen_weights)
+{
+  daily = portfolio_daily(chosen_stocks,chosen_weights)
+  daily$port_value = 100*cumprod(1 + daily$port_ret)
+  daily$nifty_value = 100*cumprod(1 + daily$nifty_ret)
+  daily$port_fall = daily$port_value/pmax(cummax(daily$port_value),100) - 1 #highest value so far, starting from the 100 invested
+  daily$nifty_fall = daily$nifty_value/pmax(cummax(daily$nifty_value),100) - 1
+  daily
+}
+
+#the comparison table: one row for the portfolio, one for the NIFTY 50
+returns_table = function(chosen_stocks,chosen_weights)
+{
+  daily = portfolio_paths(chosen_stocks,chosen_weights)
+  n = nrow(daily)
+  years = as.numeric(max(daily$date) - min(daily$date))/365.25
+  
+  out = data.frame(Portfolio = c("Portfolio","NIFTY 50"),
+                   Growth = NA,Return = NA,Volatility = NA,Sharpe = NA,Fall = NA,Worst = NA)
+  rets = list(daily$port_ret,daily$nifty_ret)
+  values = list(daily$port_value,daily$nifty_value)
+  falls = list(daily$port_fall,daily$nifty_fall)
+  
+  for(j in 1:2)
+  {
+    r = rets[[j]]
+    worst = which.min(r)
+    out$Growth[j] = sprintf("%.2fx",values[[j]][n]/100)
+    out$Return[j] = scales::percent((values[[j]][n]/100)^(1/years) - 1,accuracy = 0.1) #compounded return per year
+    out$Volatility[j] = scales::percent(sd(r)*sqrt(252),accuracy = 0.1)
+    out$Sharpe[j] = sprintf("%.2f",mean(r - daily$rf)*252/(sd(r)*sqrt(252))) #return above the risk-free rate per unit of risk
+    out$Fall[j] = scales::percent(min(falls[[j]]),accuracy = 0.1)
+    out$Worst[j] = paste0(scales::percent(r[worst],accuracy = 0.1)," (",format(daily$date[worst],"%d %b %Y"),")")
+  }
+  names(out) = c("","Growth","Return per year","Volatility per year","Sharpe ratio","Biggest fall","Worst day")
+  out
+}
+
+make_growth_plot = function(chosen_stocks,chosen_weights)
+{
+  daily = portfolio_paths(chosen_stocks,chosen_weights)
+  lines = data.frame(
+    date = rep(daily$date,2),
+    value = c(daily$port_value,daily$nifty_value),
+    who = factor(rep(c("Portfolio","NIFTY 50"),each = nrow(daily)),levels = c("Portfolio","NIFTY 50"))
+  )
+  ends = lines[lines$date == max(lines$date),]
+  ends$label = paste0(ends$who," Rs ",round(ends$value))
+  
+  ggplot(lines,aes(x = date,y = value,colour = who)) +
+    geom_hline(yintercept = 100,colour = "grey70",linetype = "dashed") +
+    geom_line(linewidth = 0.8) +
+    geom_text(data = ends,aes(label = label),hjust = -0.08,size = 3.8,fontface = "bold") +
+    scale_colour_manual(values = c("Portfolio" = "#2F3E4E","NIFTY 50" = "#E07B39"),guide = "none") +
+    scale_y_continuous(labels = function(x) paste0("Rs ",x)) +
+    scale_x_date(expand = expansion(mult = c(0.01,0.18))) + #room on the right for the labels
+    labs(title = "Growth of Rs 100 invested in January 2020",
+         subtitle = "Weights kept fixed every day. NIFTY 50 is the price index, without dividends.",
+         x = NULL,y = NULL) +
+    theme_dash()
+}
+
+make_drawdown_plot = function(chosen_stocks,chosen_weights)
+{
+  daily = portfolio_paths(chosen_stocks,chosen_weights)
+  lines = data.frame(
+    date = rep(daily$date,2),
+    fall = c(daily$port_fall,daily$nifty_fall),
+    who = factor(rep(c("Portfolio","NIFTY 50"),each = nrow(daily)),levels = c("Portfolio","NIFTY 50"))
+  )
+  
+  ggplot(lines,aes(x = date,y = fall,colour = who)) +
+    geom_area(data = lines[lines$who == "Portfolio",],fill = "#2F3E4E",alpha = 0.12,colour = NA) +
+    geom_line(linewidth = 0.6) +
+    geom_hline(yintercept = 0,colour = "grey60") +
+    scale_colour_manual(values = c("Portfolio" = "#2F3E4E","NIFTY 50" = "#E07B39")) +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = "Fall from the previous high",
+         subtitle = "0% means at a new high. The shaded area is the portfolio.",
+         x = NULL,y = NULL,colour = NULL) +
+    theme_dash() +
+    theme(legend.position = "top")
+}
+
+#the portfolio's return in every month, like a calendar
+make_monthly_plot = function(chosen_stocks,chosen_weights)
+{
+  daily = portfolio_daily(chosen_stocks,chosen_weights)
+  daily$year = as.numeric(format(daily$date,"%Y"))
+  daily$month = as.numeric(format(daily$date,"%m"))
+  
+  monthly = aggregate(port_ret ~ year + month,data = daily,FUN = function(r) prod(1 + r) - 1) #compound the days of each month
+  monthly$month = factor(month_names[monthly$month],levels = month_names)
+  monthly$year = factor(monthly$year,levels = rev(sort(unique(monthly$year)))) #2020 at the top, latest year at the bottom
+  monthly$label = sprintf("%+.1f",round(100*monthly$port_ret,1) + 0) #+ 0 turns -0.0 into +0.0
+  monthly$text_col = ifelse(abs(monthly$port_ret) > 0.06,"white","grey15")
+  
+  ggplot(monthly,aes(x = month,y = year)) +
+    geom_tile(aes(fill = port_ret),colour = "white",linewidth = 1) +
+    geom_text(aes(label = label,colour = text_col),size = 3.5) +
+    scale_colour_identity() +
+    scale_fill_gradientn(colours = c("#8E1B1B","#D9534F","#F4C7C3","#F7F7F7","#C5E5CD","#4CA36A","#1D6B37"),
+                         limits = c(-0.12,0.12),oob = scales::squish,guide = "none") + #same colours as the loadings heat map
+    scale_x_discrete(position = "top") +
+    labs(title = "Return in every month (%)",subtitle = "Green: the portfolio gained that month. Red: it lost.",x = NULL,y = NULL) +
+    theme_dash() +
+    theme(panel.grid = element_blank(),
+          axis.text = element_text(face = "bold"))
 }
